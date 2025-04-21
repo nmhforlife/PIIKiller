@@ -94,11 +94,12 @@ If you need to build the application from source:
    ./release.sh --arm64
    ```
 
-5. **Self-sign the application** (optional):
+5. **Sign the application** (optional):
    ```
    chmod +x self-sign.sh
    ./self-sign.sh
    ```
+   Note: This creates an ad-hoc signature rather than using a certificate, which is sufficient for team use but will still trigger Gatekeeper warnings.
 
 6. **Distribute the resulting DMG** from the `dist` folder.
 

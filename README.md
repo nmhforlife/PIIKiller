@@ -97,12 +97,12 @@ This builds, signs, and notarizes the application for distribution. Requires App
 
 If you don't have an Apple Developer account but need to distribute the app to your team:
 
-1. **Self-signing option**
+1. **Ad-hoc signing option**
    ```
    ./release.sh
    ./self-sign.sh
    ```
-   This creates a self-signed certificate and signs the app with it. Users will still need to bypass Gatekeeper.
+   This creates an ad-hoc signature for the app. Users will still need to bypass Gatekeeper.
 
 2. **Team deployment package**
    ```
@@ -123,6 +123,22 @@ Instructions for users:
 1. Control+click (right-click) on the app and select "Open"
 2. When prompted with a warning, click "Open" again
 3. On first launch, macOS may require going to System Preferences > Security & Privacy and clicking "Open Anyway"
+
+### macOS App Distribution Issues
+
+1. **"App is damaged" error**:
+   - This occurs with unsigned or ad-hoc signed applications
+   - Users should right-click the app and select "Open" instead of double-clicking
+   - System Settings > Security & Privacy > General may show an option to "Open Anyway"
+
+2. **Ad-hoc signing limitations**:
+   - Ad-hoc signed apps still trigger Gatekeeper warnings
+   - Each user needs to approve the app on first launch
+   - Ad-hoc signing is appropriate for team distribution but not public distribution
+
+3. **Gatekeeper bypassing (for IT administrators)**:
+   - In managed environments, IT admins can approve the app organization-wide
+   - Add the app to the Gatekeeper allowlist: `spctl --add --label "PIIKiller" path/to/PIIKiller.app`
 
 ## Contributing
 
@@ -208,14 +224,14 @@ If you encounter problems with the Python environment or spaCy installation:
 ### macOS App Distribution Issues
 
 1. **"App is damaged" error**:
-   - This occurs with unsigned or self-signed applications
+   - This occurs with unsigned or ad-hoc signed applications
    - Users should right-click the app and select "Open" instead of double-clicking
    - System Settings > Security & Privacy > General may show an option to "Open Anyway"
 
-2. **Self-signing limitations**:
-   - Self-signed apps still trigger Gatekeeper warnings
+2. **Ad-hoc signing limitations**:
+   - Ad-hoc signed apps still trigger Gatekeeper warnings
    - Each user needs to approve the app on first launch
-   - Self-signing is appropriate for team distribution but not public distribution
+   - Ad-hoc signing is appropriate for team distribution but not public distribution
 
 3. **Gatekeeper bypassing (for IT administrators)**:
    - In managed environments, IT admins can approve the app organization-wide
