@@ -9,9 +9,9 @@ echo "=== PIIKiller Environment Diagnostic and Repair ==="
 PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
 echo "Detected Python version: $PYTHON_VERSION"
 
-# Python 3.13 specific handling
-if [[ $PYTHON_VERSION == 3.13* ]]; then
-    echo "⚠️ Python 3.13 detected - using compatibility mode"
+# Python 3.12/3.13 specific handling
+if [[ $PYTHON_VERSION == 3.1[23]* ]]; then
+    echo "⚠️ Python 3.12/3.13 detected - using compatibility mode"
     PYTHON_COMPATIBILITY_MODE=true
 else
     PYTHON_COMPATIBILITY_MODE=false
@@ -83,23 +83,29 @@ ENV_FILE="$(pwd)/presidio_env/env_vars.sh"
 echo "# PIIKiller environment variables" > "$ENV_FILE"
 echo "export VIRTUAL_ENV=\"$VIRTUAL_ENV\"" >> "$ENV_FILE"
 
-# For Python 3.13, we need to use a different approach for spaCy
+# For Python 3.12/3.13, we need to use a different approach for packages
 if [ "$PYTHON_COMPATIBILITY_MODE" = true ]; then
-    echo "Using Python 3.13 compatibility mode for spaCy installation"
+    echo "Using Python 3.12/3.13 compatibility mode for package installation"
     
-    # Install prerequisites
+    # Install prerequisites - force binary installations for numpy
     echo "Installing NumPy (required for spaCy)..."
-    run_pip install --only-binary :all: numpy
+    run_pip install --only-binary=numpy numpy
+    
+    # If that fails, try with a specific version
+    if [ $? -ne 0 ]; then
+        echo "Trying alternative NumPy installation..."
+        run_pip install --only-binary=:all: numpy==1.26.0
+    fi
 
     # Try to install a smaller, more compatible model
     echo "Installing minimal spaCy with en_core_web_sm model..."
-    run_pip install --only-binary :all: spacy
+    run_pip install --only-binary=:all: spacy
     run_python -m spacy download en_core_web_sm
     
     # Use a direct wheel download approach for Presidio
     echo "Installing Presidio packages..."
-    run_pip install --only-binary :all: presidio-analyzer
-    run_pip install --only-binary :all: presidio-anonymizer
+    run_pip install --only-binary=:all: presidio-analyzer
+    run_pip install --only-binary=:all: presidio-anonymizer
     
     # Set environment variable to use the smaller model
     export SPACY_MODEL="en_core_web_sm"
@@ -107,19 +113,16 @@ if [ "$PYTHON_COMPATIBILITY_MODE" = true ]; then
 else
     # Install prerequisite packages for spaCy
     echo "Installing prerequisites for spaCy..."
-    run_pip install numpy==1.24.3
-    run_pip install cython==0.29.36
+    run_pip install --only-binary=:all: numpy
+    run_pip install --only-binary=:all: cython
 
     # Try multiple approaches to install spaCy
     echo "Attempting to install spaCy (method 1)..."
-    if ! run_pip install --only-binary :all: spacy==3.6.1; then
+    if ! run_pip install --only-binary=:all: spacy==3.6.1; then
         echo "First method failed, trying method 2..."
-        if ! run_pip install --no-build-isolation spacy==3.6.1; then
-            echo "Second method failed, trying older version..."
-            if ! run_pip install --only-binary :all: spacy==3.5.3; then
-                echo "Third method failed, trying minimal installation..."
-                run_pip install --only-binary :all: spacy==3.5.0
-            fi
+        if ! run_pip install --only-binary=:all: spacy==3.5.3; then
+            echo "Second method failed, trying minimal installation..."
+            run_pip install --only-binary=:all: spacy==3.5.0
         fi
     fi
 

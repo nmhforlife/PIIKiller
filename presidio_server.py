@@ -277,7 +277,7 @@ def debug_analyze():
     
     # Get raw spaCy results
     import spacy
-    nlp = spacy.load("en_core_web_lg")
+    nlp = spacy.load("en_core_web_sm")
     doc = nlp(text)
     
     spacy_entities = [{"text": ent.text, "label": ent.label_, "start": ent.start_char, "end": ent.end_char} 

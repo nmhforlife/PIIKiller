@@ -4,83 +4,103 @@ set -e  # Exit immediately if any command fails
 
 echo "=== Setting up PIIKiller Python environment ==="
 
-# Create a fresh virtual environment
+# Check for presence of custom files
+HAS_CUSTOM_SERVER=false
+HAS_CUSTOM_RECOGNIZER=false
+
+if [ -f "presidio_server.py" ]; then
+    if grep -q "monkey-patch\|CustomNameRecognizer" "presidio_server.py"; then
+        echo "Found enhanced presidio_server.py - will preserve"
+        HAS_CUSTOM_SERVER=true
+        cp presidio_server.py presidio_server.py.bak
+    fi
+fi
+
+if [ -f "presidio_custom_recognizer.py" ]; then
+    echo "Found custom recognizer - will preserve"
+    HAS_CUSTOM_RECOGNIZER=true
+    cp presidio_custom_recognizer.py presidio_custom_recognizer.py.bak
+fi
+
+# Create and activate Python virtual environment
 echo "Creating Python virtual environment..."
 python3 -m venv presidio_env
+source presidio_env/bin/activate
 
-# Use absolute paths to ensure we're using the right Python/pip
-VENV_PYTHON="$(pwd)/presidio_env/bin/python"
-VENV_PIP="$(pwd)/presidio_env/bin/pip"
-
-echo "Using Python at: $VENV_PYTHON"
-echo "Using pip at: $VENV_PIP"
-
-# Upgrade pip to latest version
-echo "Upgrading pip..."
-$VENV_PYTHON -m pip install --upgrade pip
-
-# Install wheel first to help with binary packages
-echo "Installing wheel..."
-$VENV_PIP install wheel
-
-# Install required packages with explicit versions for stability
-echo "Installing required packages..."
-$VENV_PIP install flask==2.3.3
-$VENV_PIP install flask-cors==4.0.0
-$VENV_PIP install presidio-analyzer==2.2.33
-$VENV_PIP install presidio-anonymizer==2.2.33
-
-# Install spaCy with explicit version
-echo "Installing spaCy..."
-$VENV_PIP install spacy==3.6.1
-
-# Download the spaCy model
-echo "Downloading spaCy model..."
-$VENV_PYTHON -m spacy download en_core_web_lg
-
-# Verify installation
-echo "Verifying installation..."
-if ! $VENV_PYTHON -c "import spacy, presidio_analyzer, presidio_anonymizer, flask" 2>/dev/null; then
-    echo "ERROR: Package verification failed. Something went wrong with the installation."
+# Verify activation
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "Error: Failed to activate virtual environment."
     exit 1
 fi
 
-echo "Package verification successful."
+# Upgrade pip and install required packages
+echo "Upgrading pip..."
+pip install --upgrade pip setuptools wheel
 
-# Check if the custom presidio_server.py already exists
-if [ -f "presidio_server.py" ]; then
-    # Check if this file has our customizations
-    if grep -q "monkey-patch" "presidio_server.py" || grep -q "CustomNameRecognizer" "presidio_server.py"; then
-        echo "Found existing custom presidio_server.py with enhancements - preserving this file"
-        # Create a backup just in case
-        cp presidio_server.py presidio_server.py.bak
-        
-        # Copy to lib directory for packaging
-        mkdir -p presidio_env/lib
-        cp presidio_server.py presidio_env/lib/
-    else
-        echo "Found existing presidio_server.py without enhancements - creating default file"
-        # Create the default Flask server 
-        create_default_server=true
+echo "Installing required packages..."
+pip install flask flask-cors
+
+# Check Python version for compatibility mode
+PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
+if [[ $PYTHON_VERSION == 3.1[23]* ]]; then
+    echo "Using compatibility mode for Python 3.12/3.13"
+    COMPATIBILITY_MODE=true
+    SPACY_MODEL="en_core_web_sm"
+    
+    # Install binary packages for modern Python
+    echo "Installing NumPy (required for spaCy)..."
+    pip install --only-binary=numpy numpy
+    
+    # If that fails, try with a specific version
+    if [ $? -ne 0 ]; then
+        echo "Trying alternative NumPy installation..."
+        pip install --only-binary=:all: numpy==1.26.0
     fi
+
+    # Install spaCy and download the smaller model
+    echo "Installing spaCy and downloading en_core_web_sm model..."
+    pip install --only-binary=:all: spacy
+    python -m spacy download en_core_web_sm
 else
-    echo "No existing presidio_server.py found - creating default file"
-    create_default_server=true
+    echo "Using standard installation for Python < 3.12"
+    COMPATIBILITY_MODE=false
+    SPACY_MODEL="en_core_web_lg"
+    
+    # Install prerequisite packages
+    echo "Installing prerequisites for spaCy..."
+    pip install --only-binary=:all: numpy
+    pip install --only-binary=:all: cython
+
+    # Install spaCy
+    echo "Installing spaCy and downloading en_core_web_lg model..."
+    pip install --only-binary=:all: spacy
+    python -m spacy download en_core_web_lg
 fi
 
-# Only create the default server file if needed
-if [ "$create_default_server" = true ]; then
-    # Create a simple Flask server to expose Presidio
-    echo "Creating Flask server..."
-    cat > presidio_server.py << 'EOL'
+# Install Presidio packages
+echo "Installing Presidio packages..."
+pip install presidio-analyzer presidio-anonymizer
+
+# If we don't have custom files, create default ones
+if [ "$HAS_CUSTOM_SERVER" = false ]; then
+    echo "Creating default presidio_server.py..."
+    cat > presidio_server.py << 'EOF'
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from presidio_analyzer import AnalyzerEngine
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import RecognizerResult, OperatorConfig
+import logging
+import re
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('presidio-server')
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+# Initialize analyzer and anonymizer
 analyzer = AnalyzerEngine()
 anonymizer = AnonymizerEngine()
 
@@ -96,125 +116,163 @@ def analyze():
     if request.method == 'OPTIONS':
         return '', 204
         
-    data = request.get_json()
-    text = data.get('text', '')
-    language = data.get('language', 'en')
-    entities = data.get('entities', [])
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        language = data.get('language', 'en')
+        entities = data.get('entities', [])
+        
+        # Skip processing if text is very short
+        if len(text) < 3:
+            return jsonify([])
 
-    results = analyzer.analyze(
-        text=text,
-        language=language,
-        entities=entities
-    )
+        # Get results from the analyzer
+        results = analyzer.analyze(
+            text=text,
+            language=language,
+            entities=entities
+        )
+        
+        # Manually create dictionaries from RecognizerResult objects
+        result_dicts = []
+        for result in results:
+            result_dict = {
+                "entity_type": result.entity_type,
+                "start": result.start,
+                "end": result.end,
+                "score": float(result.score)
+            }
+            
+            if hasattr(result, "recognition_metadata"):
+                result_dict["recognition_metadata"] = result.recognition_metadata
+            
+            result_dicts.append(result_dict)
+        
+        return jsonify(result_dicts)
     
-    return jsonify([result.to_dict() for result in results])
+    except Exception as e:
+        logger.error(f"Error in analyze endpoint: {str(e)}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
 @app.route('/anonymize', methods=['POST', 'OPTIONS'])
 def anonymize():
     if request.method == 'OPTIONS':
         return '', 204
         
-    data = request.get_json()
-    text = data.get('text', '')
-    analyzer_results = data.get('analyzerResults', [])
-    operators = data.get('operators', {})
-    comment_info = data.get('commentInfo', {})  # Get comment metadata
-
-    # Convert analyzer results to RecognizerResult objects
-    results = [
-        RecognizerResult(
-            entity_type=result['entity_type'],
-            start=result['start'],
-            end=result['end'],
-            score=result['score']
-        )
-        for result in analyzer_results
-    ]
-
-    # Convert operators to OperatorConfig objects
-    operator_configs = {}
-    for entity_type, config in operators.items():
-        # Create a copy of the config without unsupported parameters
-        config_copy = config.copy()
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        analyzer_results = data.get('analyzerResults', [])
+        operators = data.get('operators', {})
+        comment_info = data.get('commentInfo', {})
         
-        # Remove unsupported parameters
-        if 'type' in config_copy:
-            del config_copy['type']
-        if 'newValue' in config_copy:
-            del config_copy['newValue']
+        # Skip processing if text is very short
+        if len(text) < 3:
+            return jsonify({"text": text, "metadata": comment_info})
+        
+        # If we have text but no analyzer results, run analyze first
+        if text and not analyzer_results:
+            standard_results = analyzer.analyze(
+                text=text,
+                language="en"
+            )
+                
+            analyzer_results = []
+            for result in standard_results:
+                result_dict = {
+                    "entity_type": result.entity_type,
+                    "start": result.start,
+                    "end": result.end,
+                    "score": float(result.score)
+                }
+                
+                if hasattr(result, "recognition_metadata"):
+                    result_dict["recognition_metadata"] = result.recognition_metadata
+                else:
+                    result_dict["recognition_metadata"] = {"recognizer_name": "unknown"}
+                    
+                analyzer_results.append(result_dict)
+
+        # Convert analyzer results to RecognizerResult objects
+        results = []
+        for result in analyzer_results:
+            recognizer_result = RecognizerResult(
+                entity_type=result['entity_type'],
+                start=result['start'],
+                end=result['end'],
+                score=result['score']
+            )
             
-        # Set the operator name based on the entity type
-        operator_name = 'replace'  # Default operator
-        if entity_type == 'EMAIL_ADDRESS':
-            operator_name = 'replace'
-        elif entity_type == 'PHONE_NUMBER':
-            operator_name = 'replace'
-        elif entity_type == 'SSN':
-            operator_name = 'replace'
-        elif entity_type == 'CREDIT_CARD':
-            operator_name = 'replace'
-        elif entity_type == 'IP_ADDRESS':
-            operator_name = 'replace'
-        elif entity_type == 'PERSON':
-            operator_name = 'replace'
-        elif entity_type == 'DATE_TIME':
-            operator_name = 'replace'
-        elif entity_type == 'ADDRESS':
-            operator_name = 'replace'
+            if 'recognition_metadata' in result:
+                recognizer_result.recognition_metadata = result['recognition_metadata']
+            else:
+                recognizer_result.recognition_metadata = {"recognizer_name": "unknown"}
+                
+            results.append(recognizer_result)
+
+        # Convert operators to OperatorConfig objects
+        operator_configs = {}
+        for entity_type, config in operators.items():
+            config_copy = config.copy()
             
-        # Create the operator config with the required parameters
-        operator_configs[entity_type] = OperatorConfig(
-            operator_name=operator_name,
-            **config_copy
+            if 'type' in config_copy:
+                del config_copy['type']
+            if 'newValue' in config_copy:
+                del config_copy['newValue']
+                
+            operator_name = 'replace'  # Default operator
+            
+            operator_configs[entity_type] = OperatorConfig(
+                operator_name=operator_name,
+                **config_copy
+            )
+
+        anonymized_result = anonymizer.anonymize(
+            text=text,
+            analyzer_results=results,
+            operators=operator_configs
         )
 
-    anonymized_result = anonymizer.anonymize(
-        text=text,
-        analyzer_results=results,
-        operators=operator_configs
-    )
-
-    # Include comment metadata in the response
-    response = {
-        'text': anonymized_result.text,
-        'metadata': {
-            'author': comment_info.get('author', 'Unknown'),
-            'authorType': comment_info.get('authorType', 'Unknown'),  # 'agent' or 'end_user'
-            'timestamp': comment_info.get('timestamp', ''),
-            'commentId': comment_info.get('commentId', '')
+        # Include comment metadata in the response
+        response = {
+            'text': anonymized_result.text,
+            'metadata': comment_info
         }
-    }
 
-    return jsonify(response)
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"Error in anonymize endpoint: {str(e)}")
+        
+        # Return the original text with error metadata
+        response = {
+            'text': text,
+            'error': str(e),
+            'metadata': comment_info
+        }
+        return jsonify(response)
 
 if __name__ == '__main__':
+    logger.info("Starting Presidio server...")
     app.run(host='0.0.0.0', port=3001)
-EOL
-
-    # Also copy to lib directory for packaging
-    mkdir -p presidio_env/lib
-    cp presidio_server.py presidio_env/lib/
+EOF
 fi
 
-# Also check for our custom recognizer file
-if [ -f "presidio_custom_recognizer.py" ]; then
-    echo "Found custom name recognizer - copying for packaging"
-    # Copy to lib directory
-    mkdir -p presidio_env/lib
-    cp presidio_custom_recognizer.py presidio_env/lib/
-else
-    echo "Creating custom name recognizer for enhanced detection..."
-    # Create a basic template for the custom recognizer
-    cat > presidio_custom_recognizer.py << 'EOL'
-from presidio_analyzer import PatternRecognizer, Pattern, EntityRecognizer
-from presidio_anonymizer.entities import RecognizerResult
+if [ "$HAS_CUSTOM_RECOGNIZER" = false ]; then
+    echo "Creating default custom_recognizer template..."
+    cat > presidio_custom_recognizer.py << 'EOF'
+from presidio_analyzer import EntityRecognizer, RecognizerResult
 import re
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('presidio-custom')
 
 class CustomNameRecognizer(EntityRecognizer):
     """
-    Custom recognizer for person names with enhanced handling for tabular data.
-    This recognizer identifies names in various formats that might be missed
-    by the default recognizer.
+    Custom recognizer for person names.
+    This is a template that you can expand with your own implementation.
     """
     
     def __init__(self):
@@ -242,59 +300,40 @@ class CustomNameRecognizer(EntityRecognizer):
         # Check if we're interested in PERSON entities
         if "PERSON" not in entities:
             return results
-        
-        # Define basic name patterns
-        patterns = [
-            # Standard first and last name (First Last)
-            (r'\b[A-Z][a-zA-Z\'\-]+\s+[A-Z][a-zA-Z\'\-]+\b', 0.75),
             
-            # Name with middle initial (First M. Last)
-            (r'\b[A-Z][a-zA-Z\'\-]+\s+[A-Z]\.?\s+[A-Z][a-zA-Z\'\-]+\b', 0.85),
-            
-            # Name with title (Mr./Mrs./Ms./Dr. First Last)
-            (r'\b(Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.)\s+[A-Z][a-zA-Z\'\-]+(\s+[A-Z][a-zA-Z\'\-]+)+\b', 0.85),
-        ]
-        
-        for pattern, score in patterns:
-            matches = re.finditer(pattern, text)
-            for match in matches:
-                result = RecognizerResult(
-                    entity_type="PERSON",
-                    start=match.start(),
-                    end=match.end(),
-                    score=score
-                )
-                # Add metadata using attribute assignment instead of constructor
-                result.recognition_metadata = {
-                    "recognizer_name": self.name,
-                    "pattern_name": pattern
-                }
-                results.append(result)
+        # Implement your custom logic here
+        # For example, you could check for tabular data patterns, specific name formats, etc.
         
         return results
 
-# This function can be used to create a server with the custom recognizer
-def create_enhanced_presidio_server():
-    from flask import Flask, request, jsonify
-    from flask_cors import CORS
-    from presidio_analyzer import AnalyzerEngine
-    from presidio_anonymizer import AnonymizerEngine
-    
-    app = Flask(__name__)
-    CORS(app)
-    
-    # Initialize the analyzer with custom recognizers
-    analyzer = AnalyzerEngine()
-    analyzer.registry.add_recognizer(CustomNameRecognizer())
-    
-    # Initialize the anonymizer
-    anonymizer = AnonymizerEngine()
-    
-    return app, analyzer, anonymizer
-EOL
+if __name__ == '__main__':
+    # For testing purposes
+    recognizer = CustomNameRecognizer()
+    print("Custom recognizer initialized.")
+EOF
+fi
 
-    # Copy to lib directory for packaging
-    mkdir -p presidio_env/lib
+# Restore any backed up custom implementations
+if [ "$HAS_CUSTOM_SERVER" = true ]; then
+    echo "Restoring custom server implementation..."
+    mv presidio_server.py.bak presidio_server.py
+fi
+
+if [ "$HAS_CUSTOM_RECOGNIZER" = true ]; then
+    echo "Restoring custom recognizer implementation..."
+    mv presidio_custom_recognizer.py.bak presidio_custom_recognizer.py
+fi
+
+# Update model in server if needed
+if [ "$COMPATIBILITY_MODE" = true ]; then
+    echo "Updating server to use smaller spaCy model..."
+    sed -i.bak 's/en_core_web_lg/en_core_web_sm/g' presidio_server.py
+fi
+
+# Copy files to lib directory for packaging
+mkdir -p presidio_env/lib
+cp presidio_server.py presidio_env/lib/
+if [ -f "presidio_custom_recognizer.py" ]; then
     cp presidio_custom_recognizer.py presidio_env/lib/
 fi
 
@@ -305,10 +344,7 @@ echo "Or build the application: ./release.sh"
 # Print version information for verification
 echo ""
 echo "=== Environment Information ==="
-echo "Python version: $($VENV_PYTHON --version)"
-echo "spaCy version: $($VENV_PYTHON -c 'import spacy; print(spacy.__version__)')"
-echo "Presidio Analyzer version: $($VENV_PYTHON -c 'import presidio_analyzer; print(presidio_analyzer.__version__)')"
-echo "Presidio Anonymizer version: $($VENV_PYTHON -c 'import presidio_anonymizer; print(presidio_anonymizer.__version__)')"
-echo "Flask version: $($VENV_PYTHON -c 'import flask; print(flask.__version__)')" 
-
-chmod +x setup_presidio.sh release.sh fix_env.sh
+echo "Python version: $PYTHON_VERSION"
+echo "spaCy model: $SPACY_MODEL"
+echo "Server ready to start on port 3001"
+echo "To start the server: source presidio_env/bin/activate && python presidio_server.py"

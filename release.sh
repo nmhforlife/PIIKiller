@@ -11,6 +11,20 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
+# Check Python version
+PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
+echo "Detected Python version: $PYTHON_VERSION"
+
+# Check if we need compatibility mode
+if [[ $PYTHON_VERSION == 3.1[23]* ]]; then
+    echo "Using compatibility mode for Python 3.12/3.13"
+    COMPATIBILITY_MODE=true
+    SPACY_MODEL="en_core_web_sm"
+else
+    COMPATIBILITY_MODE=false
+    SPACY_MODEL="en_core_web_lg"
+fi
+
 # Parse command line arguments
 SIGN_APP=false
 NOTARIZE=false
@@ -79,17 +93,9 @@ if [ -d "$VENV_DIR" ]; then
     if ! run_python -c "import flask, flask_cors, presidio_analyzer, presidio_anonymizer, spacy" 2>/dev/null; then
         echo "Environment exists but missing required packages."
         echo "Creating a fresh environment..."
-        ./setup_presidio.sh
+        ./fix_env.sh
     else
         echo "All required packages verified."
-        
-        # Check which spaCy model should be used based on Python version
-        PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
-        if [[ $PYTHON_VERSION == 3.13* ]]; then
-            SPACY_MODEL="en_core_web_sm"
-        else
-            SPACY_MODEL="en_core_web_lg"
-        fi
         
         # Double-check spaCy and model installation specifically
         if ! run_python -c "import spacy; spacy.load('$SPACY_MODEL')" 2>/dev/null; then
@@ -101,7 +107,7 @@ if [ -d "$VENV_DIR" ]; then
     fi
 else
     echo "Creating new Python environment..."
-    ./setup_presidio.sh
+    ./fix_env.sh
     # Activate the newly created environment
     activate_venv
 fi
@@ -112,7 +118,7 @@ mkdir -p "$VENV_DIR/lib"
 
 # Check if enhanced Presidio server exists
 if [ -f "presidio_server.py" ]; then
-    if grep -q "monkey-patch" "presidio_server.py" || grep -q "CustomNameRecognizer" "presidio_server.py"; then
+    if grep -q "monkey-patch\|CustomNameRecognizer" "presidio_server.py"; then
         echo "Found enhanced presidio_server.py - preserving enhancements"
         cp presidio_server.py "$VENV_DIR/lib/"
     else
@@ -128,17 +134,6 @@ fi
 
 # Step 2: Fix the Python environment for packaging
 echo "Step 2: Fixing Python environment for packaging..."
-
-# Check which spaCy model is installed
-PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
-
-# Python 3.13 specific handling
-if [[ $PYTHON_VERSION == 3.13* ]]; then
-    echo "Detected Python 3.13 - using compatibility mode"
-    SPACY_MODEL="en_core_web_sm"
-else
-    SPACY_MODEL="en_core_web_lg"
-fi
 
 # Fix for potential spaCy path issues in packaged app
 # This ensures models work correctly when bundled
@@ -156,19 +151,18 @@ try:
     print(f'spaCy version: {spacy.__version__}')
     print(f'spaCy path: {spacy.__path__}')
     
-    # Verify model is loadable - use the appropriate model based on Python version
-    model_name = 'en_core_web_sm' if '3.13' in sys.version else 'en_core_web_lg'
+    # Verify model is loadable
     try:
-        model = spacy.load(model_name)
+        model = spacy.load('$SPACY_MODEL')
         model_path = model.path
-        print(f'Model {model_name} loaded successfully from: {model_path}')
+        print(f'Model $SPACY_MODEL loaded successfully from: {model_path}')
     except Exception as e:
-        print(f'Error loading primary model: {str(e)}')
-        # Try fallback model
-        fallback_model = 'en_core_web_sm'
-        model = spacy.load(fallback_model)
-        model_path = model.path
-        print(f'Fallback model {fallback_model} loaded successfully from: {model_path}')
+        print(f'Error loading model: {str(e)}')
+        # Try fallback model if needed
+        if '$SPACY_MODEL' != 'en_core_web_sm':
+            print('Trying fallback model: en_core_web_sm')
+            model = spacy.load('en_core_web_sm')
+            print(f'Fallback model loaded from: {model.path}')
     
     exit(0)
 except Exception as e:
@@ -180,11 +174,18 @@ except Exception as e:
     echo "$SPACY_VERIFICATION"
     
     if [ $SPACY_CHECK_RESULT -ne 0 ]; then
-        echo "ERROR: spaCy verification failed. Please run './fix_env.sh' to repair the environment."
-        exit 1
+        echo "WARNING: spaCy verification failed. Attempting to fix..."
+        run_python -m spacy download $SPACY_MODEL
+        
+        # Check again
+        if ! run_python -c "import spacy; spacy.load('$SPACY_MODEL')" 2>/dev/null; then
+            echo "ERROR: Could not fix spaCy installation. Falling back to en_core_web_sm."
+            SPACY_MODEL="en_core_web_sm"
+            run_python -m spacy download en_core_web_sm
+        fi
     fi
 else
-    echo "ERROR: Python environment not found. Please run './setup_presidio.sh' first."
+    echo "ERROR: Python environment not found. Please run './fix_env.sh' first."
     exit 1
 fi
 
