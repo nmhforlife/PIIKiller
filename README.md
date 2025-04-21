@@ -21,7 +21,7 @@ PIIKiller is an open source desktop application for PII (Personally Identifiable
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/PIIKiller.git
+   git clone https://github.com/nmhforlife/PIIKiller.git
    cd PIIKiller
    ```
 
