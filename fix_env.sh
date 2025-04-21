@@ -34,12 +34,29 @@ echo "Installing required packages..."
 $VENV_PIP install wheel
 $VENV_PIP install flask==2.3.3
 $VENV_PIP install flask-cors==4.0.0
+
+# Install prerequisite packages for spaCy
+echo "Installing prerequisites for spaCy..."
+$VENV_PIP install numpy==1.24.3
+$VENV_PIP install cython==0.29.36
+
+# Try multiple approaches to install spaCy
+echo "Attempting to install spaCy (method 1)..."
+if ! $VENV_PIP install --only-binary :all: spacy==3.6.1; then
+    echo "First method failed, trying method 2..."
+    if ! $VENV_PIP install --no-build-isolation spacy==3.6.1; then
+        echo "Second method failed, trying older version..."
+        if ! $VENV_PIP install --only-binary :all: spacy==3.5.3; then
+            echo "Third method failed, trying minimal installation..."
+            $VENV_PIP install --only-binary :all: spacy==3.5.0
+        fi
+    fi
+fi
+
+# Install Presidio packages after spaCy to avoid dependency conflicts
+echo "Installing Presidio packages..."
 $VENV_PIP install presidio-analyzer==2.2.33
 $VENV_PIP install presidio-anonymizer==2.2.33
-
-# Install spaCy with extra safeguards
-echo "Installing spaCy..."
-$VENV_PIP install --no-build-isolation spacy==3.6.1
 
 # Download the spaCy model with explicit confirmation
 echo "Downloading spaCy model..."
