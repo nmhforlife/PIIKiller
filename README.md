@@ -21,7 +21,7 @@ PIIKiller is an open source desktop application for PII (Personally Identifiable
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/PIIKiller.git
+   git clone https://github.com/nmhforlife/PIIKiller.git
    cd PIIKiller
    ```
 
@@ -35,6 +35,7 @@ PIIKiller is an open source desktop application for PII (Personally Identifiable
    chmod +x setup_presidio.sh
    ./setup_presidio.sh
    ```
+   Note: This will download the spaCy model `en_core_web_lg` (about 560MB) during setup.
 
 4. Run in development mode:
    ```
@@ -76,6 +77,20 @@ Instructions for users:
 1. Control+click (right-click) on the app and select "Open"
 2. When prompted with a warning, click "Open" again
 3. On first launch, macOS may require going to System Preferences > Security & Privacy and clicking "Open Anyway"
+
+## Troubleshooting
+
+- **"Model en_core_web_lg is not installed"**: If you see this message, it means the spaCy model wasn't properly installed during setup. Run the following commands:
+  ```
+  source presidio_env/bin/activate
+  python -m spacy download en_core_web_lg
+  ```
+
+- **Python environment issues**: If you encounter errors related to Python, try recreating the environment:
+  ```
+  rm -rf presidio_env
+  ./setup_presidio.sh
+  ```
 
 ## Contributing
 
