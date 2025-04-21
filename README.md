@@ -14,7 +14,7 @@ PIIKiller is an open source desktop application for PII (Personally Identifiable
 ### Prerequisites
 
 - Node.js 16+ and npm
-- Python 3.8+
+- Python 3.8+ (including Python 3.12 and 3.13 with compatibility mode)
 - Git
 
 ### Installation
@@ -49,6 +49,8 @@ PIIKiller is an open source desktop application for PII (Personally Identifiable
 - `presidio_server.py` - Flask server for PII processing
 - `presidio_custom_recognizer.py` - Custom name recognizer implementation
 - `setup_presidio.sh` - Python environment setup script
+- `fix_env.sh` - Improved environment setup with Python version compatibility
+- `activate_presidio.sh` - Helper script to activate the Presidio environment
 - `release.sh` - Build and packaging script
 - `build-resources/` - Icons and entitlements for the app
 
@@ -69,6 +71,24 @@ npm run dev
 ```
 
 This builds an unsigned application. On macOS, users will need to bypass security warnings.
+
+### Production Build (Signed)
+
+```
+./release.sh --sign
+```
+
+Requires a valid Apple Developer ID certificate installed in your keychain.
+
+### Production Build (Signed and Notarized)
+
+```
+export APPLE_ID=your.email@example.com
+export APPLE_ID_PASSWORD=your-app-specific-password
+./release.sh --notarize
+```
+
+This builds, signs, and notarizes the application for distribution. Requires Apple Developer Program membership.
 
 ### Opening Unsigned Apps on macOS
 
@@ -121,34 +141,41 @@ ISC
 
 If you encounter problems with the Python environment or spaCy installation:
 
-1. **Use the fix_env.sh script**:
+1. **Use the improved fix_env.sh script**:
    ```
    chmod +x fix_env.sh
    ./fix_env.sh
    ```
-   This script will create a fresh Python environment with all required packages at specific versions.
+   This script automatically detects your Python version and applies appropriate compatibility measures.
 
-2. **"No module named 'spacy'" or similar errors**:
+2. **Environment Activation**:
+   For a streamlined environment activation, use the provided helper script:
+   ```
+   source ./activate_presidio.sh
+   ```
+   This not only activates the environment but also loads any saved environment variables.
+
+3. **Python 3.12/3.13 Compatibility**:
+   When using Python 3.12 or 3.13, the application will automatically:
+   - Use the smaller spaCy model (en_core_web_sm)
+   - Apply binary-only package installation
+   - Adjust NumPy installation methods
+
+4. **"No module named 'spacy'" or similar errors**:
    This typically happens when the Python environment is created but packages are not installed correctly.
    Run the fix script above, which uses absolute paths and verified package versions.
 
-3. **spaCy model loading failures**:
-   If you see errors related to loading the spaCy model, run:
-   ```
-   ./presidio_env/bin/python -m spacy download en_core_web_lg
-   ```
-
-4. **Corrupt Python environment**:
+5. **Corrupt Python environment**:
    If you continue to have issues, remove the environment completely and start fresh:
    ```
    rm -rf presidio_env
-   ./setup_presidio.sh
+   ./fix_env.sh
    ```
 
-5. **Build errors with spaCy**:
-   If you encounter errors during the build process about spaCy, ensure your package versions are compatible:
+6. **NumPy installation errors**:
+   If you see errors related to NumPy, especially on newer Python versions:
    ```
-   ./presidio_env/bin/pip install spacy==3.6.1 presidio-analyzer==2.2.33 presidio-anonymizer==2.2.33
+   ./presidio_env/bin/pip install --only-binary=numpy numpy
    ```
 
 ### Opening Unsigned Apps on macOS
