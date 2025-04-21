@@ -42,7 +42,27 @@ if [ ! -d "presidio_env" ]; then
     echo "Creating new Python environment..."
     ./setup_presidio.sh
 else
-    echo "Python environment already exists, skipping setup."
+    echo "Python environment already exists, checking dependencies..."
+    
+    # Ensure the environment has all required packages even if it already exists
+    source presidio_env/bin/activate
+    
+    echo "Installing/updating required Python packages..."
+    pip install presidio_analyzer
+    pip install presidio_anonymizer
+    pip install flask
+    pip install flask-cors
+    pip install spacy
+    
+    # Check if spaCy model is installed
+    if ! python -c "import spacy; spacy.load('en_core_web_lg')" &> /dev/null; then
+        echo "SpaCy model missing. Installing spaCy model..."
+        python -m spacy download en_core_web_lg
+    else
+        echo "SpaCy model already installed."
+    fi
+    
+    deactivate
 fi
 
 # Step 1.5: Make sure our custom Presidio files are preserved
@@ -63,6 +83,42 @@ if [ -f "presidio_custom_recognizer.py" ]; then
     cp presidio_custom_recognizer.py presidio_env/lib/
 fi
 
+# Step 1.6: Create a file to ensure spaCy is loaded correctly
+echo "Creating spaCy import helper..."
+SPACY_HELPER="presidio_env/lib/spacy_helper.py"
+cat > $SPACY_HELPER << 'EOL'
+import os
+import sys
+
+# Add the site-packages directory to path explicitly
+site_packages_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if os.path.exists(os.path.join(site_packages_dir, "lib", "python3.9", "site-packages")):
+    sys.path.append(os.path.join(site_packages_dir, "lib", "python3.9", "site-packages"))
+elif os.path.exists(os.path.join(site_packages_dir, "lib", "python3.8", "site-packages")):
+    sys.path.append(os.path.join(site_packages_dir, "lib", "python3.8", "site-packages"))
+elif os.path.exists(os.path.join(site_packages_dir, "lib", "python3.10", "site-packages")):
+    sys.path.append(os.path.join(site_packages_dir, "lib", "python3.10", "site-packages"))
+elif os.path.exists(os.path.join(site_packages_dir, "lib", "python3.11", "site-packages")):
+    sys.path.append(os.path.join(site_packages_dir, "lib", "python3.11", "site-packages"))
+
+# Try to import spacy
+try:
+    import spacy
+    spacy_imported = True
+    print(f"Successfully imported spaCy from {spacy.__file__}")
+except ImportError as e:
+    spacy_imported = False
+    print(f"Failed to import spaCy: {e}")
+    
+# Try to load the model
+if spacy_imported:
+    try:
+        nlp = spacy.load('en_core_web_lg')
+        print(f"Successfully loaded model from {nlp.path}")
+    except Exception as e:
+        print(f"Failed to load model: {e}")
+EOL
+
 # Step 2: Fix the Python environment for packaging
 echo "Step 2: Fixing Python environment for packaging..."
 
@@ -72,9 +128,16 @@ if [ -d "presidio_env" ]; then
     ENV_PYTHON="presidio_env/bin/python"
     if [ -f "$ENV_PYTHON" ]; then
         echo "Fixing spaCy paths for packaging..."
-        $ENV_PYTHON -c "
+        source presidio_env/bin/activate
+        
+        # Run our helper to debug spaCy
+        python $SPACY_HELPER
+        
+        # Copy the spaCy model to a known location if found
+        python -c "
 import sys
 import os
+import shutil
 import spacy
 from pathlib import Path
 
@@ -87,9 +150,21 @@ try:
     model = spacy.load('en_core_web_lg')
     model_path = model.path
     print(f'Model loaded successfully from: {model_path}')
+    
+    # Create a model directory in our lib folder
+    models_dir = os.path.join(os.path.dirname('$SPACY_HELPER'), 'spacy_models')
+    os.makedirs(models_dir, exist_ok=True)
+    
+    # Copy the model to our custom location
+    model_name = os.path.basename(model_path)
+    target_path = os.path.join(models_dir, model_name)
+    if not os.path.exists(target_path):
+        print(f'Copying model to {target_path}')
+        shutil.copytree(model_path, target_path)
 except Exception as e:
     print(f'Error loading model: {e}')
 "
+        deactivate
     else
         echo "Python not found in the environment"
     fi
@@ -113,9 +188,60 @@ find presidio_env -name "*.pyd" -delete
 echo "Step 5: Installing/updating dependencies..."
 npm install
 
-# Step 6: Build with or without signing
+# Step 6: Modify presidio_server.py to ensure it can find spaCy
+echo "Updating presidio_server.py to handle spaCy imports..."
+EXISTING_SERVER="presidio_env/lib/presidio_server.py"
+if [ -f "$EXISTING_SERVER" ]; then
+    # Add spaCy import handling
+    sed -i.bak '1i\
+# Add path handling for spaCy\
+import os\
+import sys\
+\
+# Add directory containing this file to path\
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\
+\
+# Try to import spaCy helper\
+try:\
+    import spacy_helper\
+except ImportError:\
+    print("spaCy helper not found, continuing anyway")\
+' "$EXISTING_SERVER"
+    
+    # Check if the modification worked
+    if grep -q "spaCy helper" "$EXISTING_SERVER"; then
+        echo "Successfully updated presidio_server.py with spaCy import handling"
+    else
+        echo "Failed to update presidio_server.py, creating a wrapper file"
+        # If sed failed (e.g., on macOS), create a wrapper file
+        mv "$EXISTING_SERVER" "${EXISTING_SERVER}.original"
+        cat > "$EXISTING_SERVER" << 'EOL'
+# Add path handling for spaCy
+import os
+import sys
+
+# Add directory containing this file to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Try to import spaCy helper
+try:
+    import spacy_helper
+except ImportError:
+    print("spaCy helper not found, continuing anyway")
+
+# Import the original script
+from presidio_server_original import *
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=3001)
+EOL
+        mv "${EXISTING_SERVER}.original" "${EXISTING_SERVER/%.py/_original.py}"
+    fi
+fi
+
+# Step 7: Build with or without signing
 if [ "$SIGN_APP" = true ]; then
-    echo "Step 6: Building for production with code signing..."
+    echo "Step 7: Building for production with code signing..."
     
     # Check for Apple Developer ID certificate
     if ! security find-identity -v | grep -q "Developer ID Application"; then
@@ -144,7 +270,7 @@ if [ "$SIGN_APP" = true ]; then
         npm run build-signed
     fi
 else
-    echo "Step 6: Building for production (unsigned)..."
+    echo "Step 7: Building for production (unsigned)..."
     npm run build-unsigned
     echo "This is an unsigned build. App will show 'app is damaged' warning on newer macOS versions."
     echo "For production use, run with --sign to enable code signing."

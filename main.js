@@ -369,9 +369,44 @@ function startPresidioServer() {
         'presidio_env', 
         process.platform === 'win32' ? 'Lib/site-packages' : 'lib/python3.8/site-packages'
       );
-      if (fs.existsSync(sitePackagesPath)) {
-        env.PYTHONPATH = sitePackagesPath;
+
+      // Enhanced approach: Add multiple possible Python version paths
+      let pythonPaths = [];
+      
+      // Check multiple Python version possibilities
+      for (const pyVer of ['3.8', '3.9', '3.10', '3.11', '3.12']) {
+        const sitePath = path.join(
+          process.resourcesPath, 
+          'presidio_env', 
+          process.platform === 'win32' ? `Lib/site-packages` : `lib/python${pyVer}/site-packages`
+        );
+        if (fs.existsSync(sitePath)) {
+          pythonPaths.push(sitePath);
+          console.log(`Found Python site-packages: ${sitePath}`);
+        }
       }
+      
+      // Add lib directory itself for custom modules
+      const libPath = path.join(process.resourcesPath, 'presidio_env', 'lib');
+      if (fs.existsSync(libPath)) {
+        pythonPaths.push(libPath);
+        console.log(`Found lib path: ${libPath}`);
+      }
+      
+      // Set PYTHONPATH with all found paths
+      if (pythonPaths.length > 0) {
+        env.PYTHONPATH = pythonPaths.join(path.delimiter);
+        console.log(`Setting PYTHONPATH to: ${env.PYTHONPATH}`);
+      } else if (fs.existsSync(sitePackagesPath)) {
+        env.PYTHONPATH = sitePackagesPath;
+        console.log(`Setting PYTHONPATH to fallback: ${sitePackagesPath}`);
+      } else {
+        console.warn('Could not find any Python site-packages directories');
+      }
+      
+      // Also set PYTHONHOME to help Python find its standard libraries
+      env.PYTHONHOME = path.join(process.resourcesPath, 'presidio_env');
+      console.log(`Setting PYTHONHOME to: ${env.PYTHONHOME}`);
     }
     
     // Spawn the process with the environment
