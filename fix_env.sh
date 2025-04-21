@@ -33,7 +33,7 @@ echo "Using pip at: $VENV_PIP"
 
 # Activate the virtual environment
 echo "Activating virtual environment..."
-source presidio_env/bin/activate
+source "$(pwd)/presidio_env/bin/activate"
 
 # Verify activation
 if [ -z "$VIRTUAL_ENV" ]; then
@@ -42,6 +42,12 @@ if [ -z "$VIRTUAL_ENV" ]; then
 else
     echo "✅ Virtual environment activated: $VIRTUAL_ENV"
     USE_ABSOLUTE_PATHS=false
+    
+    # Ensure Python and pip point to the virtual environment
+    PYTHON_PATH=$(which python)
+    PIP_PATH=$(which pip)
+    echo "Using Python from: $PYTHON_PATH"
+    echo "Using pip from: $PIP_PATH"
 fi
 
 # Function to run pip commands with either activated env or absolute path
@@ -49,7 +55,7 @@ run_pip() {
     if [ "$USE_ABSOLUTE_PATHS" = true ]; then
         $VENV_PIP "$@"
     else
-        pip install "$@"
+        pip "$@"
     fi
 }
 
@@ -72,6 +78,11 @@ run_pip install wheel
 run_pip install flask==2.3.3
 run_pip install flask-cors==4.0.0
 
+# Create an environment file for persisting environment variables
+ENV_FILE="$(pwd)/presidio_env/env_vars.sh"
+echo "# PIIKiller environment variables" > "$ENV_FILE"
+echo "export VIRTUAL_ENV=\"$VIRTUAL_ENV\"" >> "$ENV_FILE"
+
 # For Python 3.13, we need to use a different approach for spaCy
 if [ "$PYTHON_COMPATIBILITY_MODE" = true ]; then
     echo "Using Python 3.13 compatibility mode for spaCy installation"
@@ -92,6 +103,7 @@ if [ "$PYTHON_COMPATIBILITY_MODE" = true ]; then
     
     # Set environment variable to use the smaller model
     export SPACY_MODEL="en_core_web_sm"
+    echo "export SPACY_MODEL=\"en_core_web_sm\"" >> "$ENV_FILE"
 else
     # Install prerequisite packages for spaCy
     echo "Installing prerequisites for spaCy..."
@@ -122,6 +134,7 @@ else
     
     # Set environment variable to use the larger model
     export SPACY_MODEL="en_core_web_lg"
+    echo "export SPACY_MODEL=\"en_core_web_lg\"" >> "$ENV_FILE"
 fi
 
 # Modify main scripts to handle different spaCy models
@@ -162,12 +175,29 @@ if [ -f "presidio_custom_recognizer.py" ]; then
     echo "Copied presidio_custom_recognizer.py"
 fi
 
+# Create an activation helper script
+ACTIVATE_HELPER="$(pwd)/activate_presidio.sh"
+cat > "$ACTIVATE_HELPER" << 'EOL'
+#!/bin/bash
+# Helper script to activate the Presidio environment
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source "$SCRIPT_DIR/presidio_env/bin/activate"
+if [ -f "$SCRIPT_DIR/presidio_env/env_vars.sh" ]; then
+    source "$SCRIPT_DIR/presidio_env/env_vars.sh"
+    echo "✅ Presidio environment variables loaded"
+fi
+echo "✅ Presidio environment activated"
+EOL
+chmod +x "$ACTIVATE_HELPER"
+
 echo ""
 echo "=== Environment setup complete ==="
 echo "Python Version: $PYTHON_VERSION"
 echo "spaCy Model: $SPACY_MODEL"
 echo ""
-echo "Important: To activate this environment in your current shell, run:"
+echo "Important: To activate this environment in your current shell, run either:"
 echo "  source presidio_env/bin/activate"
+echo "  or"
+echo "  source ./activate_presidio.sh  (recommended)"
 echo ""
 echo "Run './release.sh' to build the application" 
