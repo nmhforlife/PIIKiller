@@ -39,44 +39,82 @@ done
 # Step 1: Set up or verify the Python environment
 echo "Step 1: Checking Python environment and Presidio..."
 
-# Use absolute paths to ensure we're using the right Python/pip
-VENV_PYTHON="$(pwd)/presidio_env/bin/python"
-VENV_PIP="$(pwd)/presidio_env/bin/pip"
+# Define environment paths
+VENV_DIR="$(pwd)/presidio_env"
+VENV_PYTHON="$VENV_DIR/bin/python"
+VENV_PIP="$VENV_DIR/bin/pip"
+
+# Function to activate the virtual environment
+activate_venv() {
+    echo "Activating virtual environment..."
+    # Check if the script is being sourced
+    if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+        # If sourced, we can directly activate
+        source "$VENV_DIR/bin/activate"
+        echo "Environment activated via source"
+    else
+        # If not sourced, we need to use the absolute paths
+        echo "Note: Using absolute paths for Python since the script is not sourced."
+        echo "For interactive use, run: source $VENV_DIR/bin/activate"
+    fi
+}
+
+# Function to run Python with the virtual environment
+run_python() {
+    if [ -n "$VIRTUAL_ENV" ]; then
+        python "$@"
+    else
+        "$VENV_PYTHON" "$@"
+    fi
+}
 
 # Check if Python environment exists and has all required packages
-if [ -d "presidio_env" ]; then
+if [ -d "$VENV_DIR" ]; then
     echo "Python environment exists, verifying required packages..."
     
+    # Activate the virtual environment
+    activate_venv
+    
     # Verify that all required packages are installed
-    if ! $VENV_PYTHON -c "import flask, flask_cors, presidio_analyzer, presidio_anonymizer, spacy" 2>/dev/null; then
+    if ! run_python -c "import flask, flask_cors, presidio_analyzer, presidio_anonymizer, spacy" 2>/dev/null; then
         echo "Environment exists but missing required packages."
         echo "Creating a fresh environment..."
         ./setup_presidio.sh
     else
         echo "All required packages verified."
         
-        # Double-check spaCy and model installation specifically
-        if ! $VENV_PYTHON -c "import spacy; spacy.load('en_core_web_lg')" 2>/dev/null; then
-            echo "spaCy model not properly installed. Reinstalling..."
-            $VENV_PYTHON -m spacy download en_core_web_lg
+        # Check which spaCy model should be used based on Python version
+        PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
+        if [[ $PYTHON_VERSION == 3.13* ]]; then
+            SPACY_MODEL="en_core_web_sm"
         else
-            echo "spaCy model verified."
+            SPACY_MODEL="en_core_web_lg"
+        fi
+        
+        # Double-check spaCy and model installation specifically
+        if ! run_python -c "import spacy; spacy.load('$SPACY_MODEL')" 2>/dev/null; then
+            echo "spaCy model not properly installed. Reinstalling..."
+            run_python -m spacy download $SPACY_MODEL
+        else
+            echo "spaCy model verified: $SPACY_MODEL"
         fi
     fi
 else
     echo "Creating new Python environment..."
     ./setup_presidio.sh
+    # Activate the newly created environment
+    activate_venv
 fi
 
 # Step 1.5: Make sure our custom Presidio files are preserved
 echo "Step 1.5: Preserving custom Presidio enhancements..."
-mkdir -p presidio_env/lib
+mkdir -p "$VENV_DIR/lib"
 
 # Check if enhanced Presidio server exists
 if [ -f "presidio_server.py" ]; then
     if grep -q "monkey-patch" "presidio_server.py" || grep -q "CustomNameRecognizer" "presidio_server.py"; then
         echo "Found enhanced presidio_server.py - preserving enhancements"
-        cp presidio_server.py presidio_env/lib/
+        cp presidio_server.py "$VENV_DIR/lib/"
     else
         echo "Using standard presidio_server.py" 
     fi
@@ -85,14 +123,13 @@ fi
 # Ensure custom recognizer is included
 if [ -f "presidio_custom_recognizer.py" ]; then
     echo "Found custom recognizer - preserving for packaging"
-    cp presidio_custom_recognizer.py presidio_env/lib/
+    cp presidio_custom_recognizer.py "$VENV_DIR/lib/"
 fi
 
 # Step 2: Fix the Python environment for packaging
 echo "Step 2: Fixing Python environment for packaging..."
 
 # Check which spaCy model is installed
-VENV_PYTHON="$(pwd)/presidio_env/bin/python"
 PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
 
 # Python 3.13 specific handling
@@ -105,11 +142,11 @@ fi
 
 # Fix for potential spaCy path issues in packaged app
 # This ensures models work correctly when bundled
-if [ -d "presidio_env" ]; then
+if [ -d "$VENV_DIR" ]; then
     echo "Verifying spaCy and dependencies..."
     
     # Use a more robust check with error handling
-    SPACY_VERIFICATION=$($VENV_PYTHON -c "
+    SPACY_VERIFICATION=$(run_python -c "
 try:
     import spacy
     import os
@@ -160,10 +197,10 @@ fi
 # Step 4: Remove .pyc files from the Python environment
 # (this helps with code signing issues)
 echo "Step 4: Cleaning up __pycache__ directories..."
-find presidio_env -name "__pycache__" -type d -exec rm -rf {} +
-find presidio_env -name "*.pyc" -delete
-find presidio_env -name "*.pyo" -delete
-find presidio_env -name "*.pyd" -delete
+find "$VENV_DIR" -name "__pycache__" -type d -exec rm -rf {} +
+find "$VENV_DIR" -name "*.pyc" -delete
+find "$VENV_DIR" -name "*.pyo" -delete
+find "$VENV_DIR" -name "*.pyd" -delete
 
 # Step 5: Install or update dependencies
 echo "Step 5: Installing/updating dependencies..."

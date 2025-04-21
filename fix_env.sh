@@ -24,22 +24,53 @@ rm -rf presidio_env
 echo "Creating fresh Python environment..."
 python3 -m venv presidio_env
 
-# Activate the environment with specific path to ensure we're using the right Python
+# Set paths for direct execution (when needed)
 VENV_PYTHON="$(pwd)/presidio_env/bin/python"
 VENV_PIP="$(pwd)/presidio_env/bin/pip"
 
 echo "Using Python at: $VENV_PYTHON"
 echo "Using pip at: $VENV_PIP"
 
+# Activate the virtual environment
+echo "Activating virtual environment..."
+source presidio_env/bin/activate
+
+# Verify activation
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "⚠️ Virtual environment activation failed, falling back to absolute paths."
+    USE_ABSOLUTE_PATHS=true
+else
+    echo "✅ Virtual environment activated: $VIRTUAL_ENV"
+    USE_ABSOLUTE_PATHS=false
+fi
+
+# Function to run pip commands with either activated env or absolute path
+run_pip() {
+    if [ "$USE_ABSOLUTE_PATHS" = true ]; then
+        $VENV_PIP "$@"
+    else
+        pip install "$@"
+    fi
+}
+
+# Function to run python commands with either activated env or absolute path
+run_python() {
+    if [ "$USE_ABSOLUTE_PATHS" = true ]; then
+        $VENV_PYTHON "$@"
+    else
+        python "$@"
+    fi
+}
+
 # Upgrade pip first to avoid any installation issues
 echo "Upgrading pip..."
-$VENV_PYTHON -m pip install --upgrade pip setuptools wheel
+run_pip install --upgrade pip setuptools wheel
 
 # Install packages with explicit versions
 echo "Installing required packages..."
-$VENV_PIP install wheel
-$VENV_PIP install flask==2.3.3
-$VENV_PIP install flask-cors==4.0.0
+run_pip install wheel
+run_pip install flask==2.3.3
+run_pip install flask-cors==4.0.0
 
 # For Python 3.13, we need to use a different approach for spaCy
 if [ "$PYTHON_COMPATIBILITY_MODE" = true ]; then
@@ -47,47 +78,47 @@ if [ "$PYTHON_COMPATIBILITY_MODE" = true ]; then
     
     # Install prerequisites
     echo "Installing NumPy (required for spaCy)..."
-    $VENV_PIP install --only-binary :all: numpy
+    run_pip install --only-binary :all: numpy
 
     # Try to install a smaller, more compatible model
     echo "Installing minimal spaCy with en_core_web_sm model..."
-    $VENV_PIP install --only-binary :all: spacy
-    $VENV_PYTHON -m spacy download en_core_web_sm
+    run_pip install --only-binary :all: spacy
+    run_python -m spacy download en_core_web_sm
     
     # Use a direct wheel download approach for Presidio
     echo "Installing Presidio packages..."
-    $VENV_PIP install --only-binary :all: presidio-analyzer
-    $VENV_PIP install --only-binary :all: presidio-anonymizer
+    run_pip install --only-binary :all: presidio-analyzer
+    run_pip install --only-binary :all: presidio-anonymizer
     
     # Set environment variable to use the smaller model
     export SPACY_MODEL="en_core_web_sm"
 else
     # Install prerequisite packages for spaCy
     echo "Installing prerequisites for spaCy..."
-    $VENV_PIP install numpy==1.24.3
-    $VENV_PIP install cython==0.29.36
+    run_pip install numpy==1.24.3
+    run_pip install cython==0.29.36
 
     # Try multiple approaches to install spaCy
     echo "Attempting to install spaCy (method 1)..."
-    if ! $VENV_PIP install --only-binary :all: spacy==3.6.1; then
+    if ! run_pip install --only-binary :all: spacy==3.6.1; then
         echo "First method failed, trying method 2..."
-        if ! $VENV_PIP install --no-build-isolation spacy==3.6.1; then
+        if ! run_pip install --no-build-isolation spacy==3.6.1; then
             echo "Second method failed, trying older version..."
-            if ! $VENV_PIP install --only-binary :all: spacy==3.5.3; then
+            if ! run_pip install --only-binary :all: spacy==3.5.3; then
                 echo "Third method failed, trying minimal installation..."
-                $VENV_PIP install --only-binary :all: spacy==3.5.0
+                run_pip install --only-binary :all: spacy==3.5.0
             fi
         fi
     fi
 
     # Install Presidio packages after spaCy to avoid dependency conflicts
     echo "Installing Presidio packages..."
-    $VENV_PIP install presidio-analyzer==2.2.33
-    $VENV_PIP install presidio-anonymizer==2.2.33
+    run_pip install presidio-analyzer==2.2.33
+    run_pip install presidio-anonymizer==2.2.33
 
     # Download the spaCy model with explicit confirmation
     echo "Downloading spaCy model..."
-    $VENV_PYTHON -m spacy download en_core_web_lg
+    run_python -m spacy download en_core_web_lg
     
     # Set environment variable to use the larger model
     export SPACY_MODEL="en_core_web_lg"
@@ -105,13 +136,13 @@ fi
 # Verify the installation
 echo "Verifying installation..."
 echo "Testing spaCy import..."
-$VENV_PYTHON -c "import spacy; print(f'spaCy version: {spacy.__version__}')"
+run_python -c "import spacy; print(f'spaCy version: {spacy.__version__}')"
 
 echo "Testing required packages..."
-$VENV_PYTHON -c "import flask; print(f'Flask version: {flask.__version__}')"
+run_python -c "import flask; print(f'Flask version: {flask.__version__}')"
 
 echo "Testing Presidio packages..."
-if $VENV_PYTHON -c "import presidio_analyzer, presidio_anonymizer; print('Presidio packages loaded successfully')" 2>/dev/null; then
+if run_python -c "import presidio_analyzer, presidio_anonymizer; print('Presidio packages loaded successfully')" 2>/dev/null; then
     echo "✅ All packages verified successfully"
 else
     echo "⚠️ Presidio verification failed, but continuing..."
@@ -135,5 +166,8 @@ echo ""
 echo "=== Environment setup complete ==="
 echo "Python Version: $PYTHON_VERSION"
 echo "spaCy Model: $SPACY_MODEL"
+echo ""
+echo "Important: To activate this environment in your current shell, run:"
+echo "  source presidio_env/bin/activate"
 echo ""
 echo "Run './release.sh' to build the application" 
