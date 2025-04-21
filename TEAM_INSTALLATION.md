@@ -21,6 +21,21 @@ If you received a pre-built DMG file:
 
 5. **Future Launches**: After the first successful launch, you can open the app normally by double-clicking.
 
+## Mac Architecture Compatibility
+
+PIIKiller is available for both Intel and Apple Silicon Macs:
+
+- **Intel Macs**: The standard build works on all Intel-based Macs.
+- **Apple Silicon Macs** (M1, M2, M3 series): The ARM64 build is optimized for these Macs.
+
+Your team lead should provide you with the correct version for your Mac. If you're unsure which Mac you have:
+
+1. Click the Apple menu (top-left corner)
+2. Select "About This Mac"
+3. Look for "Chip" or "Processor" - if it shows "Apple M1/M2/M3," you have an Apple Silicon Mac
+
+If you have an Apple Silicon Mac but only have access to the Intel build, it will still work through Rosetta 2 translation but may be slightly slower.
+
 ## Troubleshooting Installation Issues
 
 ### "App is damaged and can't be opened" Error
@@ -72,7 +87,11 @@ If you need to build the application from source:
 
 4. **Build the application**:
    ```
+   # For Intel Macs:
    ./release.sh
+   
+   # For Apple Silicon Macs:
+   ./release.sh --arm64
    ```
 
 5. **Self-sign the application** (optional):

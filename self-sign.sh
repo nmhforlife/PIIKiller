@@ -4,9 +4,16 @@ set -e
 
 echo "==== PIIKiller Self-Signing Tool ===="
 
-# Check if the app exists
-if [ ! -d "dist/mac/PIIKiller.app" ]; then
-    echo "Error: Application not found at dist/mac/PIIKiller.app"
+# Check if the app exists (checking both Intel and Apple Silicon paths)
+APP_PATH=""
+if [ -d "dist/mac-arm64/PIIKiller.app" ]; then
+    APP_PATH="dist/mac-arm64/PIIKiller.app"
+    echo "Found application at $APP_PATH (Apple Silicon build)"
+elif [ -d "dist/mac/PIIKiller.app" ]; then
+    APP_PATH="dist/mac/PIIKiller.app"
+    echo "Found application at $APP_PATH (Intel build)"
+else
+    echo "Error: Application not found at dist/mac-arm64/PIIKiller.app or dist/mac/PIIKiller.app"
     echo "Please run './release.sh' first to build the app."
     exit 1
 fi
@@ -53,7 +60,7 @@ security unlock-keychain -p "piikiller" PIIKiller.keychain
 
 # Sign the application
 echo "Signing application with self-signed certificate..."
-codesign --force --deep --options runtime --sign "PIIKiller Self-Signed" "dist/mac/PIIKiller.app"
+codesign --force --deep --options runtime --sign "PIIKiller Self-Signed" "$APP_PATH"
 
 echo "Creating DMG installer..."
 # Create DMG file

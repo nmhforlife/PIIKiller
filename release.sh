@@ -28,6 +28,7 @@ fi
 # Parse command line arguments
 SIGN_APP=false
 NOTARIZE=false
+BUILD_ARM64=false
 
 # Process command line arguments
 while [[ $# -gt 0 ]]; do
@@ -41,10 +42,15 @@ while [[ $# -gt 0 ]]; do
       SIGN_APP=true # Notarization requires signing
       shift
       ;;
+    --arm64)
+      BUILD_ARM64=true
+      echo "Building specifically for Apple Silicon (ARM64)"
+      shift
+      ;;
     *)
       # Unknown option
       echo "Unknown option: $1"
-      echo "Usage: ./release.sh [--sign] [--notarize]"
+      echo "Usage: ./release.sh [--sign] [--notarize] [--arm64]"
       exit 1
       ;;
   esac
@@ -232,14 +238,29 @@ if [ "$SIGN_APP" = true ]; then
         fi
         
         # Build with notarization
-        npm run build-signed
+        if [ "$BUILD_ARM64" = true ]; then
+            echo "Building for Apple Silicon with signing and notarization..."
+            npm run build-signed -- --arm64
+        else
+            npm run build-signed
+        fi
     else
         # Build with signing but no notarization
-        npm run build-signed
+        if [ "$BUILD_ARM64" = true ]; then
+            echo "Building for Apple Silicon with signing..."
+            npm run build-signed -- --arm64
+        else
+            npm run build-signed
+        fi
     fi
 else
     echo "Step 6: Building for production (unsigned)..."
-    npm run build-unsigned
+    if [ "$BUILD_ARM64" = true ]; then
+        echo "Building for Apple Silicon without signing..."
+        npm run build-unsigned -- --arm64
+    else
+        npm run build-unsigned
+    fi
     echo "This is an unsigned build. App will show 'app is damaged' warning on newer macOS versions."
     echo "For production use, run with --sign to enable code signing."
 fi

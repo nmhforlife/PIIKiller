@@ -38,9 +38,19 @@ else
     echo "Using existing Python environment"
 fi
 
+# Detect architecture
+ARCH=$(uname -m)
+if [ "$ARCH" = "arm64" ]; then
+    echo "Building for Apple Silicon (arm64)..."
+    BUILD_FLAG="--arm64"
+else
+    echo "Building for Intel architecture..."
+    BUILD_FLAG=""
+fi
+
 # Build the application
 echo "Building application for macOS..."
-./release.sh --unsigned
+./release.sh $BUILD_FLAG
 
 # Create additional deployment materials
 echo "Creating team deployment package..."
@@ -68,6 +78,7 @@ PIIKiller Team Build
 Version: ${TEAM_BUILD}
 Build Date: $(date)
 Build Host: $(hostname)
+Architecture: ${ARCH}
 
 This build is intended for internal team use only.
 EOF
