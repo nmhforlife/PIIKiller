@@ -45,7 +45,7 @@ There are many ways to contribute to PIIKiller:
 
 1. Clone your fork:
    ```
-   git clone https://github.com/nmhforlife/PIIKiller.git
+   git clone https://github.com/your-username/PIIKiller.git
    cd PIIKiller
    ```
 
