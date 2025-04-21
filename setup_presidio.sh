@@ -1,17 +1,51 @@
 #!/bin/bash
+# Enhanced setup script for Presidio environment with improved error handling
+set -e  # Exit immediately if any command fails
 
-# Create and activate virtual environment
-echo "Creating virtual environment..."
+echo "=== Setting up PIIKiller Python environment ==="
+
+# Create a fresh virtual environment
+echo "Creating Python virtual environment..."
 python3 -m venv presidio_env
-source presidio_env/bin/activate
 
-# Install required packages
-echo "Installing Presidio packages..."
-pip install presidio_analyzer
-pip install presidio_anonymizer
-pip install flask
-pip install flask-cors
-python -m spacy download en_core_web_lg
+# Use absolute paths to ensure we're using the right Python/pip
+VENV_PYTHON="$(pwd)/presidio_env/bin/python"
+VENV_PIP="$(pwd)/presidio_env/bin/pip"
+
+echo "Using Python at: $VENV_PYTHON"
+echo "Using pip at: $VENV_PIP"
+
+# Upgrade pip to latest version
+echo "Upgrading pip..."
+$VENV_PYTHON -m pip install --upgrade pip
+
+# Install wheel first to help with binary packages
+echo "Installing wheel..."
+$VENV_PIP install wheel
+
+# Install required packages with explicit versions for stability
+echo "Installing required packages..."
+$VENV_PIP install flask==2.3.3
+$VENV_PIP install flask-cors==4.0.0
+$VENV_PIP install presidio-analyzer==2.2.33
+$VENV_PIP install presidio-anonymizer==2.2.33
+
+# Install spaCy with explicit version
+echo "Installing spaCy..."
+$VENV_PIP install spacy==3.6.1
+
+# Download the spaCy model
+echo "Downloading spaCy model..."
+$VENV_PYTHON -m spacy download en_core_web_lg
+
+# Verify installation
+echo "Verifying installation..."
+if ! $VENV_PYTHON -c "import spacy, presidio_analyzer, presidio_anonymizer, flask" 2>/dev/null; then
+    echo "ERROR: Package verification failed. Something went wrong with the installation."
+    exit 1
+fi
+
+echo "Package verification successful."
 
 # Check if the custom presidio_server.py already exists
 if [ -f "presidio_server.py" ]; then
@@ -20,6 +54,10 @@ if [ -f "presidio_server.py" ]; then
         echo "Found existing custom presidio_server.py with enhancements - preserving this file"
         # Create a backup just in case
         cp presidio_server.py presidio_server.py.bak
+        
+        # Copy to lib directory for packaging
+        mkdir -p presidio_env/lib
+        cp presidio_server.py presidio_env/lib/
     else
         echo "Found existing presidio_server.py without enhancements - creating default file"
         # Create the default Flask server 
@@ -152,10 +190,19 @@ def anonymize():
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3001)
 EOL
+
+    # Also copy to lib directory for packaging
+    mkdir -p presidio_env/lib
+    cp presidio_server.py presidio_env/lib/
 fi
 
 # Also check for our custom recognizer file
-if [ ! -f "presidio_custom_recognizer.py" ]; then
+if [ -f "presidio_custom_recognizer.py" ]; then
+    echo "Found custom name recognizer - copying for packaging"
+    # Copy to lib directory
+    mkdir -p presidio_env/lib
+    cp presidio_custom_recognizer.py presidio_env/lib/
+else
     echo "Creating custom name recognizer for enhanced detection..."
     # Create a basic template for the custom recognizer
     cat > presidio_custom_recognizer.py << 'EOL'
@@ -245,22 +292,23 @@ def create_enhanced_presidio_server():
     
     return app, analyzer, anonymizer
 EOL
+
+    # Copy to lib directory for packaging
+    mkdir -p presidio_env/lib
+    cp presidio_custom_recognizer.py presidio_env/lib/
 fi
 
-echo "Checking for presidio_server.py..."
-if [ -f "presidio_server.py" ]; then
-    echo "Presidio server script exists!"
-else
-    echo "Warning: presidio_server.py not found!"
-fi
+echo "=== PIIKiller Python environment setup complete ==="
+echo "You can now run: npm run dev"
+echo "Or build the application: ./release.sh"
 
-echo "Checking for presidio_custom_recognizer.py..."
-if [ -f "presidio_custom_recognizer.py" ]; then
-    echo "Custom recognizer script exists!"
-else
-    echo "Warning: presidio_custom_recognizer.py not found!"
-fi
+# Print version information for verification
+echo ""
+echo "=== Environment Information ==="
+echo "Python version: $($VENV_PYTHON --version)"
+echo "spaCy version: $($VENV_PYTHON -c 'import spacy; print(spacy.__version__)')"
+echo "Presidio Analyzer version: $($VENV_PYTHON -c 'import presidio_analyzer; print(presidio_analyzer.__version__)')"
+echo "Presidio Anonymizer version: $($VENV_PYTHON -c 'import presidio_anonymizer; print(presidio_anonymizer.__version__)')"
+echo "Flask version: $($VENV_PYTHON -c 'import flask; print(flask.__version__)')" 
 
-# Run the server
-echo "Starting Presidio server on port 3001..."
-python presidio_server.py 
+chmod +x setup_presidio.sh release.sh fix_env.sh

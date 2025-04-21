@@ -36,17 +36,42 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Step 1: Set up the Python environment for Presidio if not already done
+# Step 1: Set up or verify the Python environment
 echo "Step 1: Checking Python environment and Presidio..."
-if [ ! -d "presidio_env" ]; then
+
+# Use absolute paths to ensure we're using the right Python/pip
+VENV_PYTHON="$(pwd)/presidio_env/bin/python"
+VENV_PIP="$(pwd)/presidio_env/bin/pip"
+
+# Check if Python environment exists and has all required packages
+if [ -d "presidio_env" ]; then
+    echo "Python environment exists, verifying required packages..."
+    
+    # Verify that all required packages are installed
+    if ! $VENV_PYTHON -c "import flask, flask_cors, presidio_analyzer, presidio_anonymizer, spacy" 2>/dev/null; then
+        echo "Environment exists but missing required packages."
+        echo "Creating a fresh environment..."
+        ./setup_presidio.sh
+    else
+        echo "All required packages verified."
+        
+        # Double-check spaCy and model installation specifically
+        if ! $VENV_PYTHON -c "import spacy; spacy.load('en_core_web_lg')" 2>/dev/null; then
+            echo "spaCy model not properly installed. Reinstalling..."
+            $VENV_PYTHON -m spacy download en_core_web_lg
+        else
+            echo "spaCy model verified."
+        fi
+    fi
+else
     echo "Creating new Python environment..."
     ./setup_presidio.sh
-else
-    echo "Python environment already exists, skipping setup."
 fi
 
 # Step 1.5: Make sure our custom Presidio files are preserved
 echo "Step 1.5: Preserving custom Presidio enhancements..."
+mkdir -p presidio_env/lib
+
 # Check if enhanced Presidio server exists
 if [ -f "presidio_server.py" ]; then
     if grep -q "monkey-patch" "presidio_server.py" || grep -q "CustomNameRecognizer" "presidio_server.py"; then
@@ -69,30 +94,39 @@ echo "Step 2: Fixing Python environment for packaging..."
 # Fix for potential spaCy path issues in packaged app
 # This ensures models work correctly when bundled
 if [ -d "presidio_env" ]; then
-    ENV_PYTHON="presidio_env/bin/python"
-    if [ -f "$ENV_PYTHON" ]; then
-        echo "Fixing spaCy paths for packaging..."
-        $ENV_PYTHON -c "
-import sys
-import os
-import spacy
-from pathlib import Path
-
-# Print spaCy info for debugging
-print(f'spaCy version: {spacy.__version__}')
-print(f'spaCy path: {spacy.__path__}')
-
-# Get the en_core_web_lg model path
+    echo "Verifying spaCy and dependencies..."
+    
+    # Use a more robust check with error handling
+    SPACY_VERIFICATION=$($VENV_PYTHON -c "
 try:
+    import spacy
+    import os
+    import sys
+    
+    # Print spaCy info for debugging
+    print(f'spaCy version: {spacy.__version__}')
+    print(f'spaCy path: {spacy.__path__}')
+    
+    # Verify model is loadable
     model = spacy.load('en_core_web_lg')
     model_path = model.path
     print(f'Model loaded successfully from: {model_path}')
+    exit(0)
 except Exception as e:
-    print(f'Error loading model: {e}')
-"
-    else
-        echo "Python not found in the environment"
+    print(f'Error: {str(e)}')
+    exit(1)
+" 2>&1)
+    
+    SPACY_CHECK_RESULT=$?
+    echo "$SPACY_VERIFICATION"
+    
+    if [ $SPACY_CHECK_RESULT -ne 0 ]; then
+        echo "ERROR: spaCy verification failed. Please run './fix_env.sh' to repair the environment."
+        exit 1
     fi
+else
+    echo "ERROR: Python environment not found. Please run './setup_presidio.sh' first."
+    exit 1
 fi
 
 # Step 3: Clean up any previous builds

@@ -113,4 +113,47 @@ ISC
 - [Microsoft Presidio](https://github.com/microsoft/presidio) - Core PII detection and anonymization framework
 - [Electron](https://www.electronjs.org/) - Desktop application framework
 - [Flask](https://flask.palletsprojects.com/) - Python web framework
-- [spaCy](https://spacy.io/) - NLP library 
+- [spaCy](https://spacy.io/) - NLP library
+
+## Troubleshooting
+
+### Environment Setup Issues
+
+If you encounter problems with the Python environment or spaCy installation:
+
+1. **Use the fix_env.sh script**:
+   ```
+   chmod +x fix_env.sh
+   ./fix_env.sh
+   ```
+   This script will create a fresh Python environment with all required packages at specific versions.
+
+2. **"No module named 'spacy'" or similar errors**:
+   This typically happens when the Python environment is created but packages are not installed correctly.
+   Run the fix script above, which uses absolute paths and verified package versions.
+
+3. **spaCy model loading failures**:
+   If you see errors related to loading the spaCy model, run:
+   ```
+   ./presidio_env/bin/python -m spacy download en_core_web_lg
+   ```
+
+4. **Corrupt Python environment**:
+   If you continue to have issues, remove the environment completely and start fresh:
+   ```
+   rm -rf presidio_env
+   ./setup_presidio.sh
+   ```
+
+5. **Build errors with spaCy**:
+   If you encounter errors during the build process about spaCy, ensure your package versions are compatible:
+   ```
+   ./presidio_env/bin/pip install spacy==3.6.1 presidio-analyzer==2.2.33 presidio-anonymizer==2.2.33
+   ```
+
+### Opening Unsigned Apps on macOS
+
+Instructions for users:
+1. Control+click (right-click) on the app and select "Open"
+2. When prompted with a warning, click "Open" again
+3. On first launch, macOS may require going to System Preferences > Security & Privacy and clicking "Open Anyway" 
