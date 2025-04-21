@@ -52,6 +52,9 @@ PIIKiller is an open source desktop application for PII (Personally Identifiable
 - `fix_env.sh` - Improved environment setup with Python version compatibility
 - `activate_presidio.sh` - Helper script to activate the Presidio environment
 - `release.sh` - Build and packaging script
+- `self-sign.sh` - Script for self-signing the application
+- `team-deploy.sh` - Team deployment helper script
+- `TEAM_INSTALLATION.md` - Team-specific installation instructions
 - `build-resources/` - Icons and entitlements for the app
 
 ## Building for Distribution
@@ -89,6 +92,30 @@ export APPLE_ID_PASSWORD=your-app-specific-password
 ```
 
 This builds, signs, and notarizes the application for distribution. Requires Apple Developer Program membership.
+
+### Team Distribution Without an Apple Developer Account
+
+If you don't have an Apple Developer account but need to distribute the app to your team:
+
+1. **Self-signing option**
+   ```
+   ./release.sh
+   ./self-sign.sh
+   ```
+   This creates a self-signed certificate and signs the app with it. Users will still need to bypass Gatekeeper.
+
+2. **Team deployment package**
+   ```
+   ./team-deploy.sh
+   ```
+   This creates a complete deployment package with installation instructions for your team.
+
+3. **Installation Instructions**
+   
+   Provide team members with the `TEAM_INSTALLATION.md` guide, which includes:
+   - Step-by-step installation instructions
+   - Troubleshooting common issues
+   - Security guidance
 
 ### Opening Unsigned Apps on macOS
 
@@ -177,6 +204,22 @@ If you encounter problems with the Python environment or spaCy installation:
    ```
    ./presidio_env/bin/pip install --only-binary=numpy numpy
    ```
+
+### macOS App Distribution Issues
+
+1. **"App is damaged" error**:
+   - This occurs with unsigned or self-signed applications
+   - Users should right-click the app and select "Open" instead of double-clicking
+   - System Settings > Security & Privacy > General may show an option to "Open Anyway"
+
+2. **Self-signing limitations**:
+   - Self-signed apps still trigger Gatekeeper warnings
+   - Each user needs to approve the app on first launch
+   - Self-signing is appropriate for team distribution but not public distribution
+
+3. **Gatekeeper bypassing (for IT administrators)**:
+   - In managed environments, IT admins can approve the app organization-wide
+   - Add the app to the Gatekeeper allowlist: `spctl --add --label "PIIKiller" path/to/PIIKiller.app`
 
 ### Opening Unsigned Apps on macOS
 
