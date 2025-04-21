@@ -1,0 +1,59 @@
+name: Build PIIKiller
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+        
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16.x'
+    
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        npm install
+        
+    - name: Setup Python environment (non-Windows)
+      if: runner.os != 'Windows'
+      run: |
+        chmod +x setup_presidio.sh
+        ./setup_presidio.sh
+        
+    - name: Setup Python environment (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        python -m venv presidio_env
+        presidio_env\Scripts\activate
+        pip install presidio_analyzer presidio_anonymizer flask flask-cors
+        python -m spacy download en_core_web_lg
+        
+    - name: Build application
+      run: npm run build-unsigned
+      
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: piikiller-${{ runner.os }}
+        path: |
+          dist/*.dmg
+          dist/*.exe
+          dist/*.AppImage
+          dist/*.deb
+          dist/*.zip

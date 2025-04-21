@@ -1,0 +1,69 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Python environment
+presidio_env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Build artifacts
+dist/
+build/
+*.dmg
+*.zip
+*.blockmap
+*.app
+
+# macOS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime*
+.project
+.classpath
+.settings/
+
+# Logs and databases
+*.log
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+backup/
+*~
+
+# Electron builder output
+.electron-builder/
+out/
+
+# Test files and results
+test_*.json
+*_results.json
+test_data/
+custom_recognizer_results.json
+name_detection_results.json
+
+# Temporary files
+.tmp/
+.temp/
+.cache/ 
