@@ -91,6 +91,18 @@ fi
 # Step 2: Fix the Python environment for packaging
 echo "Step 2: Fixing Python environment for packaging..."
 
+# Check which spaCy model is installed
+VENV_PYTHON="$(pwd)/presidio_env/bin/python"
+PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
+
+# Python 3.13 specific handling
+if [[ $PYTHON_VERSION == 3.13* ]]; then
+    echo "Detected Python 3.13 - using compatibility mode"
+    SPACY_MODEL="en_core_web_sm"
+else
+    SPACY_MODEL="en_core_web_lg"
+fi
+
 # Fix for potential spaCy path issues in packaged app
 # This ensures models work correctly when bundled
 if [ -d "presidio_env" ]; then
@@ -107,10 +119,20 @@ try:
     print(f'spaCy version: {spacy.__version__}')
     print(f'spaCy path: {spacy.__path__}')
     
-    # Verify model is loadable
-    model = spacy.load('en_core_web_lg')
-    model_path = model.path
-    print(f'Model loaded successfully from: {model_path}')
+    # Verify model is loadable - use the appropriate model based on Python version
+    model_name = 'en_core_web_sm' if '3.13' in sys.version else 'en_core_web_lg'
+    try:
+        model = spacy.load(model_name)
+        model_path = model.path
+        print(f'Model {model_name} loaded successfully from: {model_path}')
+    except Exception as e:
+        print(f'Error loading primary model: {str(e)}')
+        # Try fallback model
+        fallback_model = 'en_core_web_sm'
+        model = spacy.load(fallback_model)
+        model_path = model.path
+        print(f'Fallback model {fallback_model} loaded successfully from: {model_path}')
+    
     exit(0)
 except Exception as e:
     print(f'Error: {str(e)}')
