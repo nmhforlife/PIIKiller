@@ -85,7 +85,7 @@ If you need to build the application from source:
    ./setup_presidio.sh
    ```
 
-4. **Build the application**:
+4. **Build and package the application**:
    ```
    # For Intel Macs:
    ./release.sh
@@ -94,12 +94,12 @@ If you need to build the application from source:
    ./release.sh --arm64
    ```
 
-5. **Sign the application** (optional):
+5. **Create a distributable DMG**:
    ```
    chmod +x self-sign.sh
    ./self-sign.sh
    ```
-   Note: This creates an ad-hoc signature rather than using a certificate, which is sufficient for team use but will still trigger Gatekeeper warnings.
+   Note: This creates an unsigned DMG package, which is sufficient for team use but will trigger Gatekeeper warnings on first launch.
 
 6. **Distribute the resulting DMG** from the `dist` folder.
 

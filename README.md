@@ -97,12 +97,14 @@ This builds, signs, and notarizes the application for distribution. Requires App
 
 If you don't have an Apple Developer account but need to distribute the app to your team:
 
-1. **Ad-hoc signing option**
+1. **Create distributable package**
    ```
-   ./release.sh
+   ./release.sh        # For Intel Macs
+   # OR
+   ./release.sh --arm64  # For Apple Silicon
    ./self-sign.sh
    ```
-   This creates an ad-hoc signature for the app. Users will still need to bypass Gatekeeper.
+   This creates an unsigned DMG package that can be distributed to your team.
 
 2. **Team deployment package**
    ```

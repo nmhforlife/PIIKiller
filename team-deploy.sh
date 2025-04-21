@@ -59,6 +59,10 @@ echo "Creating team deployment package..."
 DEPLOY_DIR="team-deploy-${TIMESTAMP}"
 mkdir -p "$DEPLOY_DIR"
 
+# Create DMG directly
+echo "Creating DMG installer..."
+node_modules/.bin/electron-builder --mac dmg --config.dmg.sign=false
+
 # Copy the DMG file
 if [ -f "dist/PIIKiller-${TEAM_BUILD}.dmg" ]; then
     cp "dist/PIIKiller-${TEAM_BUILD}.dmg" "$DEPLOY_DIR/"

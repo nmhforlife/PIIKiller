@@ -1,38 +1,37 @@
 #!/bin/bash
-# Script to self-sign the PIIKiller app without an Apple Developer account
+# Script to create a distributable package for PIIKiller without an Apple Developer account
 set -e
 
-echo "==== PIIKiller Self-Signing Tool ===="
+echo "==== PIIKiller Team Distribution Tool ===="
 
-# Check if the app exists (checking both Intel and Apple Silicon paths)
-APP_PATH=""
-if [ -d "dist/mac-arm64/PIIKiller.app" ]; then
-    APP_PATH="dist/mac-arm64/PIIKiller.app"
-    echo "Found application at $APP_PATH (Apple Silicon build)"
-elif [ -d "dist/mac/PIIKiller.app" ]; then
-    APP_PATH="dist/mac/PIIKiller.app"
-    echo "Found application at $APP_PATH (Intel build)"
-else
-    echo "Error: Application not found at dist/mac-arm64/PIIKiller.app or dist/mac/PIIKiller.app"
+# Check if dist directory exists
+if [ ! -d "dist" ]; then
+    echo "Error: No 'dist' directory found."
     echo "Please run './release.sh' first to build the app."
     exit 1
 fi
 
-# Simplest approach: use ad-hoc signing which doesn't require a certificate
-echo "Signing application with ad-hoc signature..."
-codesign --force --deep --sign - "$APP_PATH"
-
+# Build the DMG directly without modifying the app bundle
 echo "Creating DMG installer..."
-# Create DMG file
 node_modules/.bin/electron-builder --mac dmg --config.dmg.sign=false
 
-echo "==== Self-Signing Complete ===="
+# Find the generated DMG
+DMG_PATH=$(find dist -name "*.dmg" -type f -depth 1 | head -n 1)
+
+if [ -z "$DMG_PATH" ]; then
+    echo "Error: Could not find generated DMG in dist folder."
+    exit 1
+fi
+
+echo "DMG created at: $DMG_PATH"
+
+echo "==== Team Distribution Package Complete ===="
 echo ""
 echo "Important Notes for Team Distribution:"
-echo "1. This app is signed with an ad-hoc signature (no certificate)."
-echo "2. Users will still need to bypass Gatekeeper on first launch:"
+echo "1. This app will require manual approval on first launch."
+echo "2. Users will need to bypass Gatekeeper on first launch:"
 echo "   - Right-click the app and select 'Open'"
 echo "   - Click 'Open' again when prompted"
-echo "3. For smoother deployment, provide these instructions to your team."
+echo "3. For smoother deployment, provide the TEAM_INSTALLATION.md guide."
 echo ""
-echo "The app for distribution is available at: dist/PIIKiller-*.dmg" 
+echo "The app for distribution is available at: $DMG_PATH" 
