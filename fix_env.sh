@@ -39,7 +39,7 @@ $VENV_PIP install presidio-anonymizer==2.2.33
 
 # Install spaCy with extra safeguards
 echo "Installing spaCy..."
-$VENV_PIP install spacy==3.6.1
+$VENV_PIP install --no-build-isolation spacy==3.6.1
 
 # Download the spaCy model with explicit confirmation
 echo "Downloading spaCy model..."
