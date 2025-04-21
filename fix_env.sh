@@ -27,7 +27,7 @@ echo "Using pip at: $VENV_PIP"
 
 # Upgrade pip first to avoid any installation issues
 echo "Upgrading pip..."
-$VENV_PYTHON -m pip install --upgrade pip
+$VENV_PYTHON -m pip install --upgrade pip setuptools wheel
 
 # Install packages with explicit versions
 echo "Installing required packages..."
