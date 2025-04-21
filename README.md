@@ -14,7 +14,7 @@ PIIKiller is an open source desktop application for PII (Personally Identifiable
 ### Prerequisites
 
 - Node.js 16+ and npm
-- Python 3.8+
+- Python 3.8, 3.9, 3.10, or 3.11 (Python 3.13 is not compatible with spaCy)
 - Git
 
 ### Installation

@@ -1,8 +1,33 @@
 #!/bin/bash
 
+# Ensure we use a compatible Python version
+PYTHON_CMD=""
+
+# Check for Python 3.9, 3.10, or 3.11 (most compatible with spaCy)
+for version in "python3.9" "python3.10" "python3.11" "python3.8"; do
+    if command -v $version &> /dev/null; then
+        PYTHON_CMD=$version
+        echo "Using $PYTHON_CMD (recommended for spaCy compatibility)"
+        break
+    fi
+done
+
+# Fall back to python3 if specific versions not found
+if [ -z "$PYTHON_CMD" ]; then
+    PYTHON_CMD="python3"
+    # Check if it's Python 3.13 (which has compatibility issues with spaCy)
+    PYTHON_VERSION=$($PYTHON_CMD --version | awk '{print $2}')
+    if [[ $PYTHON_VERSION == 3.13* ]]; then
+        echo "⚠️ Warning: Python $PYTHON_VERSION detected, which has known compatibility issues with spaCy."
+        echo "⚠️ Consider using Python 3.9, 3.10, or 3.11 instead."
+        echo "⚠️ Attempting to continue, but build errors may occur."
+    fi
+    echo "Using $PYTHON_CMD (version $PYTHON_VERSION)"
+fi
+
 # Create and activate virtual environment
 echo "Creating virtual environment..."
-python3 -m venv presidio_env
+$PYTHON_CMD -m venv presidio_env
 source presidio_env/bin/activate
 
 # Install required packages
